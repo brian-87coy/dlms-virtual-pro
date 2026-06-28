@@ -1,4 +1,4 @@
-name: Build DLMS APK Clean UI
+name: Build DLMS APK Final Fixed
 
 on:
   push:
@@ -29,7 +29,7 @@ jobs:
         cd $HOME
         flutter create --template=app --platforms=android --org com.example dlms_virtual
 
-    # 4. Suntik Kode UI DLMS Menggunakan Komponen Standar SDK
+    # 4. Suntik Kode UI DLMS (Sudah Diperbaiki dari Typo)
     - name: Suntik Kode UI Audio DLMS
       run: |
         cd $HOME/dlms_virtual
@@ -143,7 +143,7 @@ jobs:
             return Padding(
               padding: const EdgeInsets.all(24.0),
               child: Column(
-                mainAxisAlignment: Main++++++.center,
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Text('Parametric EQ - Band 1', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   SizedBox(height: 30),
