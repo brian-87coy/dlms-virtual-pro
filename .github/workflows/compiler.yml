@@ -1,4 +1,4 @@
-name: Build DLMS APK V2 Fixed
+name: Build DLMS APK Kotlin Fixed
 
 on:
   push:
@@ -23,7 +23,7 @@ jobs:
       with:
         channel: 'stable'
 
-    # 3. Buat folder baru murni dari Flutter SDK (100% V2 Embedding Bawaan)
+    # 3. Buat folder baru murni dari Flutter SDK (V2 Embedding Asli)
     - name: Generate Fresh Flutter Project V2
       run: |
         cd $HOME
@@ -247,7 +247,7 @@ jobs:
         }
         EOF
 
-    # 5. Ambil file native Kotlin Android Audio Service
+    # 5. Suntik file native Kotlin Tanpa Pustaka Eksternal (Pure Android SDK)
     - name: Suntik Kode Native Kotlin Android
       run: |
         cd $HOME/dlms_virtual
@@ -264,7 +264,6 @@ jobs:
         import android.media.audiofx.Equalizer
         import android.os.Build
         import android.os.IBinder
-        import androidx.core.app.NotificationCompat
 
         class DlmsAudioService : Service() {
             private var equalizerMaster: Equalizer? = null
@@ -310,11 +309,19 @@ jobs:
                 }
             }
             private fun getNotification(): Notification {
-                return NotificationCompat.Builder(this, CHANNEL_ID)
-                    .setContentTitle("DLMS Virtual Pro")
-                    .setContentText("Engine Pemroses Audio Sistem Sedang Berjalan...")
-                    .setSmallIcon(android.R.drawable.ic_media_play)
-                    .build()
+                return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    Notification.Builder(this, CHANNEL_ID)
+                        .setContentTitle("DLMS Virtual Pro")
+                        .setContentText("Engine Pemroses Audio Sistem Sedang Berjalan...")
+                        .setSmallIcon(android.R.drawable.ic_media_play)
+                        .build()
+                } else {
+                    Notification.Builder(this)
+                        .setContentTitle("DLMS Virtual Pro")
+                        .setContentText("Engine Pemroses Audio Sistem Sedang Berjalan...")
+                        .setSmallIcon(android.R.drawable.ic_media_play)
+                        .build()
+                }
             }
             override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
             override fun onBind(intent: Intent?): IBinder? = null
@@ -324,16 +331,24 @@ jobs:
         cat << 'EOF' > android/app/src/main/kotlin/com/example/dlms_virtual/MainActivity.kt
         package com.example.dlms_virtual
         import android.content.Intent
-        import androidx.annotation.NonNull
         import io.flutter.embedding.android.FlutterActivity
         import io.flutter.embedding.engine.FlutterEngine
         import io.flutter.plugin.common.MethodChannel
 
         class MainActivity: FlutterActivity() {
             private val CHANNEL = "com.example.dlms/audiofx"
-            override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
+            override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
                 super.configureFlutterEngine(flutterEngine)
-                context.startService(Intent(context, DlmsAudioService::class.java))
+                
+                try {
+                    val intent = Intent(this, DlmsAudioService::class.java)
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                        startForegroundService(intent)
+                    } else {
+                        startService(intent)
+                    }
+                } catch (e: Exception) { e.printStackTrace() }
+
                 MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
                     val service = DlmsAudioService.instance
                     if (service == null) {
@@ -382,18 +397,14 @@ jobs:
         }
         EOF
 
-    # 6. MODIFIKASI MANIFEST SECARA AMAN (Trik Bypass Deteksi V1)
+    # 6. MODIFIKASI MANIFEST SECARA AMAN (Pemberian Izin Akses Audio)
     - name: Suntik Izin dan Service ke Manifest Asli V2
       run: |
         cd $HOME/dlms_virtual/android/app/src/main
-        
-        # Tambahkan permission tepat sebelum tag <application>
         sed -i '/<application/i \    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROCESSING"/>' AndroidManifest.xml
-        
-        # Tambahkan Foreground Service tepat sebelum penutup tag </application>
         sed -i '/<\/application>/i \        <service android:name=".DlmsAudioService" android:enabled="true" android:exported="false" android:foregroundServiceType="mediaProcessing" />' AndroidManifest.xml
 
-    # 7. Jalankan perakitan di dalam direktori terisolasi
+    # 7. Jalankan perakitan di dalam direktori internal Linux
     - name: Proses Merakit APK (Release Mode)
       run: |
         cd $HOME/dlms_virtual
