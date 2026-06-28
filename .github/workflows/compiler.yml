@@ -1,4 +1,4 @@
-name: Build DLMS APK Baru
+name: Build DLMS APK Final
 
 on:
   push:
@@ -10,31 +10,34 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Clone Repo Kode Anda
-      uses: actions/checkout@v4
-
+    # 1. Gunakan Java modern
     - name: Install Java (JDK)
       uses: actions/setup-java@v4
       with:
         distribution: 'zulu'
         java-version: '17'
 
+    # 2. Ambil Flutter stable versi paling baru
     - name: Install Flutter SDK
       uses: subosito/flutter-action@v2
       with:
         channel: 'stable'
 
-    - name: Pembuatan Total Project Baru (Bypass All V1 Errors)
+    # 3. Buat folder baru di direktori terpisah agar tidak bentrok dengan sisa cache
+    - name: Generate Fresh Flutter Project V2
       run: |
-        rm -rf * .github/
-        flutter create dlms_virtual --org com.example --platform android
-        mv dlms_virtual/* .
-        mv dlms_virtual/.[!.]* . 2>/dev/null || true
-        rm -rf dlms_virtual
+        cd $HOME
+        flutter create --template=app --platforms=android --org com.example dlms_virtual
+        cd dlms_virtual
+        
+        # Buat paket struktur folder Kotlin modern
+        mkdir -p android/app/src/main/kotlin/com/example/dlms_virtual
 
+    # 4. Suntik kode UI Dart langsung ke project baru
     - name: Suntik Kode UI dan Logika Audio DLMS
       run: |
-        mkdir -p lib
+        cd $HOME/dlms_virtual
+        
         cat << 'EOF' > lib/dlms_controller.dart
         import 'package:flutter/services.dart';
 
@@ -225,7 +228,6 @@ jobs:
             return Padding(
               padding: const EdgeInsets.all(24.0),
               child: Column(
-                mainAxisAlignment: Main====
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(Icons.gpp_good, size: 60, color: Colors.redAccent),
@@ -247,9 +249,10 @@ jobs:
         }
         EOF
 
-    - name: Suntik Kode Native Audio Android (Kotlin & Manifest Modern)
+    # 5. Suntik file native Android Audio Service
+    - name: Suntik Kode Native Audio Android
       run: |
-        mkdir -p android/app/src/main/kotlin/com/example/dlms_virtual
+        cd $HOME/dlms_virtual
         
         cat << 'EOF' > android/app/src/main/kotlin/com/example/dlms_virtual/DlmsAudioService.kt
         package com.example.dlms_virtual
@@ -415,14 +418,16 @@ jobs:
         </manifest>
         EOF
 
-    - name: Ambil Dependensi
-      run: flutter pub get
-
+    # 6. Jalankan perakitan di dalam direktori murni terisolasi tersebut
     - name: Proses Merakit APK (Release Mode)
-      run: flutter build apk --release --no-tree-shake-icons
+      run: |
+        cd $HOME/dlms_virtual
+        flutter pub get
+        flutter build apk --release --no-tree-shake-icons
 
+    # 7. Ambil file APK yang sukses dibuat keluar
     - name: Upload File APK yang Sudah Jadi
       uses: actions/upload-artifact@v4
       with:
         name: dlms-virtual-apk
-        path: build/app/outputs/flutter-apk/app-release.apk
+        path: /home/runner/dlms_virtual/build/app/outputs/flutter-apk/app-release.apk
