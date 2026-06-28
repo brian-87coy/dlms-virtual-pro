@@ -2,35 +2,36 @@ name: Build DLMS APK
 
 on:
   push:
-    branches: [ main ]
-  workflow_dispatch:
+      branches: [ main ]
+        workflow_dispatch:
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
+        jobs:
+          build:
+              runs-on: ubuntu-latest
 
-    steps:
-    - name: Checkout Repository
-      uses: actions/checkout@v4
+                  steps:
+                      - name: Checkout Repository
+                            uses: actions/checkout@v4
 
-    - name: Install Java (JDK)
-      uses: actions/setup-java@v4
-      with:
-        distribution: 'zulu'
-        java-version: '17'
+                                - name: Install Java (JDK)
+                                      uses: actions/setup-java@v4
+                                            with:
+                                                    distribution: 'zulu'
+                                                            java-version: '17'
 
-    - name: Install Flutter SDK
-      uses: subosito/flutter-action@v2
-      with:
-        channel: 'stable'
+                                                                - name: Install Flutter SDK
+                                                                      uses: subosito/flutter-action@v2
+                                                                            with:
+                                                                                    channel: 'stable'
 
-    - name: Ambil Dependensi & Build APK
-      run: |
-        flutter pub get
-        flutter build apk --release --no-tree-shake-icons
+                                                                                        - name: Ambil Dependensi & Build APK
+                                                                                              run: |
+                                                                                                      flutter pub get
+                                                                                                              flutter build apk --release --no-tree-shake-icons
 
-    - name: Unggah Hasil APK
-      uses: actions/upload-artifact@v4
-      with:
-        name: dlms-virtual-apk
-        path: build/app/outputs/flutter-apk/app-release.apk
+                                                                                                                  - name: Unggah Hasil APK
+                                                                                                                        uses: actions/upload-artifact@v4
+                                                                                                                              with:
+                                                                                                                                      name: dlms-virtual-apk
+                                                                                                                                              path: build/app/outputs/flutter-apk/app-release.apk
+                                                                                                                                              
