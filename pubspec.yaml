@@ -1,0 +1,27 @@
+name: dlms_virtual
+description: "A new Flutter project for Virtual DLMS Processor."
+publish_to: 'none' # Mencegah project terpublikasi ke pub.dev secara tidak sengaja
+
+environment:
+  sdk: '>=3.0.0 <4.0.0' # Menyesuaikan dengan versi Flutter stable saat ini
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Tambahkan dependensi pihak ketiga di bawah ini jika diperlukan di masa mendatang, contoh:
+  # cupertino_icons: ^1.0.6
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  # Dependensi untuk analisis kode
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
+
+  # Jika Anda memiliki aset seperti gambar atau font, daftarkan di bawah ini:
+  # assets:
+  #   - assets/images/
