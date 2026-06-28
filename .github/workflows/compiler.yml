@@ -31,7 +31,7 @@ jobs:
         cd dlms_virtual
         mkdir -p android/app/src/main/kotlin/com/example/dlms_virtual
 
-    # 4. Suntik Kode UI Dart Aman Tanpa Masalah Mapping Stream
+    # 4. Suntik Kode UI Dart (Perbaikan Typo Sways & Penanganan Stream)
     - name: Suntik Kode UI dan Fitur Baru
       run: |
         cd $HOME/dlms_virtual
@@ -97,7 +97,6 @@ jobs:
           @override
           void initState() {
             super.initState();
-            // Perbaikan penanganan tipe data stream menggunakan List.from
             DlmsController.eventChannel.receiveBroadcastStream().listen((event) {
               if (event != null) {
                 final List<dynamic> rawList = event;
@@ -130,6 +129,7 @@ jobs:
                 ),
                 body: Column(
                   children: [
+                    // Layar Visualizer Frekuensi RTA
                     _buildRtaDisplay(),
                     Container(
                       color: Colors.black26,
@@ -320,7 +320,6 @@ jobs:
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(Icons.call_split, size: 60, color: Colors.blueAccent),
-                  Sways: MainAxisAlignment.center,
                   SizedBox(height: 20),
                   Text('Linkwitz-Riley Sub/Mid Crossover', style: TextStyle(fontSize: 18)),
                   SizedBox(height: 20),
@@ -362,7 +361,7 @@ jobs:
         }
         EOF
 
-    # 5. Suntik File MainActivity (Perbaikan Inisialisasi Visualizer & ArrayList casting)
+    # 5. Suntik File MainActivity (Aman tanpa crash)
     - name: Suntik Kode Native Engine Audio Android
       run: |
         cd $HOME/dlms_virtual
