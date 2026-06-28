@@ -1,0 +1,428 @@
+name: Build DLMS APK Baru
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Clone Repo Kode Anda
+      uses: actions/checkout@v4
+
+    - name: Install Java (JDK)
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'zulu'
+        java-version: '17'
+
+    - name: Install Flutter SDK
+      uses: subosito/flutter-action@v2
+      with:
+        channel: 'stable'
+
+    - name: Pembuatan Total Project Baru (Bypass All V1 Errors)
+      run: |
+        rm -rf * .github/
+        flutter create dlms_virtual --org com.example --platform android
+        mv dlms_virtual/* .
+        mv dlms_virtual/.[!.]* . 2>/dev/null || true
+        rm -rf dlms_virtual
+
+    - name: Suntik Kode UI dan Logika Audio DLMS
+      run: |
+        mkdir -p lib
+        cat << 'EOF' > lib/dlms_controller.dart
+        import 'package:flutter/services.dart';
+
+        class DlmsController {
+          static const _channel = MethodChannel('com.example.dlms/audiofx');
+
+          static Future<void> setGeq(int bandIndex, double gain) async {
+            await _channel.invokeMethod('setGeq', {'band': bandIndex, 'gain': gain});
+          }
+
+          static Future<void> setPeq(int ch, int band, double freq, double gain) async {
+            await _channel.invokeMethod('setPeq', {'channel': ch, 'band': band, 'freq': freq, 'gain': gain});
+          }
+
+          static Future<void> setCrossover(int ch, int band, double cutoff, double thresh, double ratio, double attack, double release) async {
+            await _channel.invokeMethod('setCrossover', {
+              'channel': ch, 'band': band, 'cutoff': cutoff, 'thresh': thresh, 'ratio': ratio, 'attack': attack, 'release': release
+            });
+          }
+
+          static Future<void> setLimiter(int ch, bool enabled, double thresh, double attack, double release) async {
+            await _channel.invokeMethod('setLimiter', {'channel': ch, 'enabled': enabled, 'thresh': thresh, 'attack': attack, 'release': release});
+          }
+        }
+        EOF
+
+        cat << 'EOF' > lib/main.dart
+        import 'package:flutter/material.dart';
+        import 'dlms_controller.dart';
+
+        void main() => runApp(MaterialApp(home: DlmsHomeScreen(), theme: ThemeData.dark(), debugShowCheckedModeBanner: false));
+
+        class DlmsHomeScreen extends StatefulWidget {
+          @override
+          _DlmsHomeScreenState createState() => _DlmsHomeScreenState();
+        }
+
+        class _DlmsHomeScreenState extends State<DlmsHomeScreen> {
+          int activeChannel = 0; 
+          List<double> geqGains = List.filled(10, 0.0);
+          List<int> geqFreqs = [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
+
+          double peqFreq = 1000.0;
+          double peqGain = 0.0;
+          double xOverFreq = 120.0;
+          double limiterThresh = -1.0;
+
+          @override
+          Widget build(BuildContext context) {
+            return DefaultTabController(
+              length: 4,
+              child: Scaffold(
+                appBar: AppBar(
+                  title: Text('🔴 DLMS VIRTUAL PRO'),
+                  bottom: TabBar(
+                    isScrollable: true,
+                    tabs: [
+                      Tab(icon: Icon(Icons.equalizer), text: "Master GEQ"),
+                      Tab(icon: Icon(Icons.tune), text: "Parametric EQ"),
+                      Tab(icon: Icon(Icons.call_split), text: "Crossover"),
+                      Tab(icon: Icon(Icons.gpp_good), text: "Output Limiter"),
+                    ],
+                  ),
+                ),
+                body: Column(
+                  children: [
+                    Container(
+                      color: Colors.black26,
+                      padding: EdgeInsets.symmetric(vertical: 10),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          ChoiceChip(
+                            label: Text('🔊 LEFT CHANNEL'),
+                            selected: activeChannel == 0,
+                            onSelected: (_) => setState(() => activeChannel = 0),
+                          ),
+                          SizedBox(width: 15),
+                          ChoiceChip(
+                            label: Text('🔊 RIGHT CHANNEL'),
+                            selected: activeChannel == 1,
+                            onSelected: (_) => setState(() => activeChannel = 1),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: TabBarView(
+                        children: [
+                          _buildGeqView(),
+                          _buildPeqView(),
+                          _buildCrossoverView(),
+                          _buildLimiterView(),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+
+          Widget _buildGeqView() {
+            return Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                itemCount: geqFreqs.length,
+                itemBuilder: (context, index) {
+                  return Column(
+                    children: [
+                      Text('${geqGains[index].toStringAsFixed(1)} dB', style: TextStyle(fontSize: 11, color: Colors.greenAccent)),
+                      Expanded(
+                        child: RotatedBox(
+                          quarterTurns: 3,
+                          child: Slider(
+                            value: geqGains[index],
+                            min: -12.0, max: 12.0,
+                            onChanged: (val) {
+                              setState(() => geqGains[index] = val);
+                              DlmsController.setGeq(index, val);
+                            },
+                          ),
+                        ),
+                      ),
+                      Text('${geqFreqs[index]}\nHz', textAlign: TextAlign.center, style: TextStyle(fontSize: 12)),
+                    ],
+                  );
+                },
+              ),
+            );
+          }
+
+          Widget _buildPeqView() {
+            return Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text('Parametric EQ - Band 1', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  SizedBox(height: 30),
+                  Text('Center Frequency: ${peqFreq.toInt()} Hz'),
+                  Slider(
+                    value: peqFreq, min: 20.0, max: 20000.0,
+                    onChanged: (val) {
+                      setState(() => peqFreq = val);
+                      DlmsController.setPeq(activeChannel, 0, peqFreq, peqGain);
+                    },
+                  ),
+                  SizedBox(height: 20),
+                  Text('Gain: ${peqGain.toStringAsFixed(1)} dB'),
+                  Slider(
+                    value: peqGain, min: -12.0, max: 12.0,
+                    onChanged: (val) {
+                      setState(() => peqGain = val);
+                      DlmsController.setPeq(activeChannel, 0, peqFreq, peqGain);
+                    },
+                  ),
+                ],
+              ),
+            );
+          }
+
+          Widget _buildCrossoverView() {
+            return Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.call_split, size: 60, color: Colors.blueAccent),
+                  SizedBox(height: 20),
+                  Text('Linkwitz-Riley Sub/Mid Crossover', style: TextStyle(fontSize: 18)),
+                  SizedBox(height: 20),
+                  Text('Cutoff Point: ${xOverFreq.toInt()} Hz', style: TextStyle(fontSize: 22, color: Colors.blueAccent)),
+                  Slider(
+                    value: xOverFreq, min: 40.0, max: 250.0,
+                    onChanged: (val) {
+                      setState(() => xOverFreq = val);
+                      DlmsController.setCrossover(activeChannel, 0, xOverFreq, 0.0, 1.0, 50.0, 200.0);
+                    },
+                  ),
+                ],
+              ),
+            );
+          }
+
+          Widget _buildLimiterView() {
+            return Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: Column(
+                mainAxisAlignment: Main====
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.gpp_good, size: 60, color: Colors.redAccent),
+                  SizedBox(height: 20),
+                  Text('Brickwall Speaker Protection', style: TextStyle(fontSize: 18)),
+                  SizedBox(height: 30),
+                  Text('Threshold Ceiling: ${limiterThresh.toStringAsFixed(1)} dB', style: TextStyle(fontSize: 22, color: Colors.redAccent)),
+                  Slider(
+                    value: limiterThresh, min: -20.0, max: 0.0,
+                    onChanged: (val) {
+                      setState(() => limiterThresh = val);
+                      DlmsController.setLimiter(activeChannel, true, limiterThresh, 5.0, 50.0);
+                    },
+                  ),
+                ],
+              ),
+            );
+          }
+        }
+        EOF
+
+    - name: Suntik Kode Native Audio Android (Kotlin & Manifest Modern)
+      run: |
+        mkdir -p android/app/src/main/kotlin/com/example/dlms_virtual
+        
+        cat << 'EOF' > android/app/src/main/kotlin/com/example/dlms_virtual/DlmsAudioService.kt
+        package com.example.dlms_virtual
+        import android.app.Notification
+        import android.app.NotificationChannel
+        import android.app.NotificationManager
+        import android.app.Service
+        import android.content.Context
+        import android.content.Intent
+        import android.media.audiofx.DynamicsProcessing
+        import android.media.audiofx.Equalizer
+        import android.os.Build
+        import android.os.IBinder
+        import androidx.core.app.NotificationCompat
+
+        class DlmsAudioService : Service() {
+            private var equalizerMaster: Equalizer? = null
+            private var dspEngine: DynamicsProcessing? = null
+            companion object {
+                const val CHANNEL_ID = "DlmsServiceChannel"
+                const val NOTIFICATION_ID = 999
+                var instance: DlmsAudioService? = null
+            }
+            override fun onCreate() {
+                super.onCreate()
+                instance = this
+                createNotificationChannel()
+                startForeground(NOTIFICATION_ID, getNotification())
+                initAudioEngine()
+            }
+            private fun initAudioEngine() {
+                try {
+                    equalizerMaster = Equalizer(1000, 0).apply { enabled = true }
+                    val builder = DynamicsProcessing.Config.Builder(
+                        DynamicsProcessing.VARIANT_FAVOR_FREQUENCY_RESOLUTION,
+                        2, true, 5, true, 3, false, 0, true
+                    )
+                    dspEngine = DynamicsProcessing(0, builder.build()).apply { enabled = true }
+                } catch (e: Exception) { e.printStackTrace() }
+            }
+            fun setGeqGain(band: Int, gainDb: Float) {
+                equalizerMaster?.let { it.setBandLevel(band.toShort(), (gainDb * 100).toInt().toShort()) }
+            }
+            fun setPeqBand(ch: Int, band: Int, freq: Float, gainDb: Float) {
+                try { dspEngine?.let { val eqBand = it.getPreEqBand(ch, band).apply { frequency = freq; gain = gainDb }; it.setPreEqBand(ch, band, eqBand) } } catch (e: Exception) { e.printStackTrace() }
+            }
+            fun setCrossoverAndComp(ch: Int, band: Int, cutoff: Float, thresh: Float, ratio: Float, attack: Float, release: Float) {
+                try { dspEngine?.let { val mbc = it.getMbcBand(ch, band).apply { cutoffFrequency = cutoff; threshold = thresh; this.ratio = ratio; attackTime = attack; releaseTime = release }; it.setMbcBand(ch, band, mbc) } } catch (e: Exception) { e.printStackTrace() }
+            }
+            fun setLimiter(ch: Int, enabled: Boolean, thresh: Float, attack: Float, release: Float) {
+                try { dspEngine?.let { val lim = DynamicsProcessing.Limiter(enabled, enabled, ch).apply { threshold = thresh; attackTime = attack; releaseTime = release; linkChannel = ch }; it.setLimiterConfigByChannelIndex(ch, lim) } } catch (e: Exception) { e.printStackTrace() }
+            }
+            private fun createNotificationChannel() {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    val serviceChannel = NotificationChannel(CHANNEL_ID, "DLMS Engine", NotificationManager.IMPORTANCE_LOW)
+                    (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(serviceChannel)
+                }
+            }
+            private fun getNotification(): Notification {
+                return NotificationCompat.Builder(this, CHANNEL_ID)
+                    .setContentTitle("DLMS Virtual Pro")
+                    .setContentText("Engine Pemroses Audio Sistem Sedang Berjalan...")
+                    .setSmallIcon(android.R.drawable.ic_media_play)
+                    .build()
+            }
+            override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
+            override fun onBind(intent: Intent?): IBinder? = null
+        }
+        EOF
+
+        cat << 'EOF' > android/app/src/main/kotlin/com/example/dlms_virtual/MainActivity.kt
+        package com.example.dlms_virtual
+        import android.content.Intent
+        import androidx.annotation.NonNull
+        import io.flutter.embedding.android.FlutterActivity
+        import io.flutter.embedding.engine.FlutterEngine
+        import io.flutter.plugin.common.MethodChannel
+
+        class MainActivity: FlutterActivity() {
+            private val CHANNEL = "com.example.dlms/audiofx"
+            override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
+                super.configureFlutterEngine(flutterEngine)
+                context.startService(Intent(context, DlmsAudioService::class.java))
+                MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
+                    val service = DlmsAudioService.instance
+                    if (service == null) {
+                        result.error("UNAVAILABLE", "Audio Service belum siap.", null)
+                        return@setMethodCallHandler
+                    }
+                    when (call.method) {
+                        "setGeq" -> {
+                            val band = call.argument<Int>("band") ?: 0
+                            val gain = call.argument<Double>("gain")?.toFloat() ?: 0f
+                            service.setGeqGain(band, gain)
+                            result.success(null)
+                        }
+                        "setPeq" -> {
+                            val ch = call.argument<Int>("channel") ?: 0
+                            val band = call.argument<Int>("band") ?: 0
+                            val freq = call.argument<Double>("freq")?.toFloat() ?: 1000f
+                            val gain = call.argument<Double>("gain")?.toFloat() ?: 0f
+                            service.setPeqBand(ch, band, freq, gain)
+                            result.success(null)
+                        }
+                        "setCrossover" -> {
+                            val ch = call.argument<Int>("channel") ?: 0
+                            val band = call.argument<Int>("band") ?: 0
+                            val cutoff = call.argument<Double>("cutoff")?.toFloat() ?: 1000f
+                            val thresh = call.argument<Double>("thresh")?.toFloat() ?: 0f
+                            val ratio = call.argument<Double>("ratio")?.toFloat() ?: 1f
+                            val attack = call.argument<Double>("attack")?.toFloat() ?: 50f
+                            val release = call.argument<Double>("release")?.toFloat() ?: 200f
+                            service.setCrossoverAndComp(ch, band, cutoff, thresh, ratio, attack, release)
+                            result.success(null)
+                        }
+                        "setLimiter" -> {
+                            val ch = call.argument<Int>("channel") ?: 0
+                            val enabled = call.argument<Boolean>("enabled") ?: true
+                            val thresh = call.argument<Double>("thresh")?.toFloat() ?: 0f
+                            val attack = call.argument<Double>("attack")?.toFloat() ?: 5f
+                            val release = call.argument<Double>("release")?.toFloat() ?: 50f
+                            service.setLimiter(ch, enabled, thresh, attack, release)
+                            result.success(null)
+                        }
+                        else -> result.notImplemented()
+                    }
+                }
+            }
+        }
+        EOF
+
+        cat << 'EOF' > android/app/src/main/AndroidManifest.xml
+        <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.example.dlms_virtual">
+            <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
+            <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+            <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROCESSING"/>
+            <application
+                android:label="DLMS Virtual"
+                android:name="${applicationName}"
+                android:icon="@mipmap/ic_launcher">
+                <activity
+                    android:name=".MainActivity"
+                    android:exported="true"
+                    android:launchMode="singleTop"
+                    android:theme="@style/LaunchTheme"
+                    android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|screenLayout|density|uiMode"
+                    android:hardwareAccelerated="true"
+                    android:windowSoftInputMode="adjustResize">
+                    <meta-data
+                      android:name="io.flutter.embedding.android.NormalTheme"
+                      android:resource="@style/NormalTheme"/>
+                    <intent-filter>
+                        <action android:name="android.intent.action.MAIN"/>
+                        <category android:name="android.intent.category.LAUNCHER"/>
+                    </intent-filter>
+                </activity>
+                <service 
+                    android:name=".DlmsAudioService" 
+                    android:enabled="true" 
+                    android:exported="false"
+                    android:foregroundServiceType="mediaProcessing" />
+            </application>
+        </manifest>
+        EOF
+
+    - name: Ambil Dependensi
+      run: flutter pub get
+
+    - name: Proses Merakit APK (Release Mode)
+      run: flutter build apk --release --no-tree-shake-icons
+
+    - name: Upload File APK yang Sudah Jadi
+      uses: actions/upload-artifact@v4
+      with:
+        name: dlms-virtual-apk
+        path: build/app/outputs/flutter-apk/app-release.apk
