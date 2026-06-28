@@ -1,4 +1,4 @@
-name: Build DLMS APK Stable V2
+name: Build DLMS APK Clean UI
 
 on:
   push:
@@ -23,19 +23,16 @@ jobs:
       with:
         channel: 'stable'
 
-    # 3. Buat folder baru murni dari Flutter SDK (100% Bebas Error V1)
+    # 3. Buat folder baru murni dari Flutter SDK (Bebas Masalah V1/Kotlin)
     - name: Generate Fresh Flutter Project V2
       run: |
         cd $HOME
         flutter create --template=app --platforms=android --org com.example dlms_virtual
 
-    # 4. Suntik Kode UI dan Konfigurasi Pubspec langsung
-    - name: Suntik Kode UI dan Dependensi Audio
+    # 4. Suntik Kode UI DLMS Menggunakan Komponen Standar SDK
+    - name: Suntik Kode UI Audio DLMS
       run: |
         cd $HOME/dlms_virtual
-        
-        # Tambahkan dependensi equalizer/audio yang murni berjalan di sisi Flutter
-        flutter pub add equalizers
 
         cat << 'EOF' > lib/main.dart
         import 'package:flutter/material.dart';
@@ -146,7 +143,7 @@ jobs:
             return Padding(
               padding: const EdgeInsets.all(24.0),
               child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisAlignment: Main++++++.center,
                 children: [
                   Text('Parametric EQ - Band 1', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   SizedBox(height: 30),
@@ -216,7 +213,7 @@ jobs:
         }
         EOF
 
-    # 5. Jalankan perakitan murni tanpa utak-atik folder Android native
+    # 5. Jalankan perakitan standar murni bawaan Flutter
     - name: Proses Merakit APK (Release Mode)
       run: |
         cd $HOME/dlms_virtual
