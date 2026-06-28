@@ -1,4 +1,4 @@
-name: Build DLMS APK Matrix and RTA
+name: Build DLMS APK Matrix RTA Fixed
 
 on:
   push:
@@ -31,7 +31,7 @@ jobs:
         cd dlms_virtual
         mkdir -p android/app/src/main/kotlin/com/example/dlms_virtual
 
-    # 4. Suntik Kode UI Dart Lengkap (GEQ, PEQ, X-Over, Limiter, Matrix, RTA)
+    # 4. Suntik Kode UI Dart Aman Tanpa Masalah Mapping Stream
     - name: Suntik Kode UI dan Fitur Baru
       run: |
         cd $HOME/dlms_virtual
@@ -87,10 +87,9 @@ jobs:
           double xOverFreq = 120.0;
           double limiterThresh = -1.0;
 
-          // Data Matrix Mixer: [Input IN1/IN2][Output CH1/CH2]
           List<List<double>> matrixGains = [
-            [1.0, 0.0], // IN 1 ke CH 1 (Left), IN 1 ke CH 2 (Right)
-            [0.0, 1.0], // IN 2 ke CH 1 (Left), IN 2 ke CH 2 (Right)
+            [1.0, 0.0], 
+            [0.0, 1.0], 
           ];
 
           List<double> rtaData = List.filled(16, 0.0);
@@ -98,13 +97,16 @@ jobs:
           @override
           void initState() {
             super.initState();
-            // Dengarkan data spektrum RTA dari Audio HAL Android
+            // Perbaikan penanganan tipe data stream menggunakan List.from
             DlmsController.eventChannel.receiveBroadcastStream().listen((event) {
-              if (event is List) {
+              if (event != null) {
+                final List<dynamic> rawList = event;
                 setState(() {
-                  rtaData = event.map<double>((e) => (e as num).toDouble()).toList();
+                  rtaData = List<double>.from(rawList.map((e) => (e as num).toDouble()));
                 });
               }
+            }, onError: (err) {
+              print("RTA Stream Error: $err");
             });
           }
 
@@ -128,7 +130,6 @@ jobs:
                 ),
                 body: Column(
                   children: [
-                    // Komponen RTA Real-time per Channel
                     _buildRtaDisplay(),
                     Container(
                       color: Colors.black26,
@@ -319,6 +320,7 @@ jobs:
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(Icons.call_split, size: 60, color: Colors.blueAccent),
+                  Sways: MainAxisAlignment.center,
                   SizedBox(height: 20),
                   Text('Linkwitz-Riley Sub/Mid Crossover', style: TextStyle(fontSize: 18)),
                   SizedBox(height: 20),
@@ -360,7 +362,7 @@ jobs:
         }
         EOF
 
-    # 5. Suntik File MainActivity Berisi Kontrol Audio DSP Dan Engine Capture RTA Stream
+    # 5. Suntik File MainActivity (Perbaikan Inisialisasi Visualizer & ArrayList casting)
     - name: Suntik Kode Native Engine Audio Android
       run: |
         cd $HOME/dlms_virtual
@@ -398,35 +400,40 @@ jobs:
                         2, true, 5, true, 3, false, 0, true
                     ).build()
                     dspEngine = DynamicsProcessing(0, dspConfig).apply { enabled = true }
-                    
-                    // Inisialisasi Android Visualizer Engine untuk pembacaan RTA
-                    visualizer = Visualizer(0).apply {
-                        captureSize = Visualizer.getCaptureSizeRange()[1]
-                        enabled = true
-                    }
                 } catch (e: Exception) { e.printStackTrace() }
 
                 EventChannel(flutterEngine.dartExecutor.binaryMessenger, EVENT_CHANNEL).setStreamHandler(
                     object : EventChannel.StreamHandler {
                         override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
                             eventSink = events
+                            try {
+                                if (visualizer == null) {
+                                    visualizer = Visualizer(0).apply {
+                                        captureSize = Visualizer.getCaptureSizeRange()[1]
+                                        enabled = true
+                                    }
+                                }
+                            } catch (e: Exception) { e.printStackTrace() }
                             startRtaStreaming()
                         }
-                        override fun onCancel(arguments: Any?) { eventSink = null }
+                        override fun onCancel(arguments: Any?) { 
+                            eventSink = null 
+                            try {
+                                visualizer?.enabled = false
+                                visualizer?.release()
+                                visualizer = null
+                            } catch(e: Exception) {}
+                        }
                     }
                 )
 
                 MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
                     when (call.method) {
                         "setMatrix" -> {
-                            val input = call.argument<Int>("input") ?: 0
                             val output = call.argument<Int>("output") ?: 0
                             val gain = call.argument<Double>("gain")?.toFloat() ?: 1f
                             try {
-                                dspEngine?.let {
-                                    val inputGain = it.getInputGainByChannelIndex(output)
-                                    it.setInputGainByChannelIndex(output, gain * 10f)
-                                }
+                                dspEngine?.setInputGainByChannelIndex(output, gain * 10f)
                                 result.success(null)
                             } catch (e: Exception) { result.error("ERROR", e.message, null) }
                         }
@@ -484,10 +491,11 @@ jobs:
                 handler.post(object : Runnable {
                     override fun run() {
                         if (eventSink == null) return
-                        val fft = ByteArray(1024)
-                        visualizer?.getFft(fft)
+                        val fft = ByteArray(256)
+                        try {
+                            visualizer?.getFft(fft)
+                        } catch (e: Exception) { }
                         
-                        // Menghitung besaran magnitudo FFT untuk diubah ke bar grafik RTA
                         val magnitudes = ArrayList<Double>()
                         for (i in 0 until 16) {
                             val r = fft[i * 2].toDouble()
@@ -496,20 +504,20 @@ jobs:
                             magnitudes.add(if (mag > 1.0) 1.0 else mag)
                         }
                         eventSink?.success(magnitudes)
-                        handler.postDelayed(this, 100) // Update RTA setiap 100ms
+                        handler.postDelayed(this, 120)
                     }
                 })
             }
         }
         EOF
 
-    # 6. Suntik Hak Akses Audio Sistem dan Perekaman Mikrofon (Wajib untuk RTA) ke Manifest Asli
+    # 6. Suntik Izin Audio dan Mikrofon Ke Android Manifest
     - name: Suntik Izin Audio dan Record ke Manifest
       run: |
         cd $HOME/dlms_virtual/android/app/src/main
         sed -i '/<application/i \    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>\n    <uses-permission android:name="android.permission.RECORD_AUDIO"/>' AndroidManifest.xml
 
-    # 7. Proses Perakitan
+    # 7. Proses Perakitan Akhir
     - name: Proses Merakit APK (Release Mode)
       run: |
         cd $HOME/dlms_virtual
